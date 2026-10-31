@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ICSGuard</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#667085;--line:#e4e7ec;--ok:#12805c;--bad:#c4321c;--warn:#b54708;--acc:#2563eb;--atk:rgba(245,158,11,.28);--tr:rgba(37,99,235,.10)}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1216;--card:#171b21;--fg:#e8eaed;--mut:#98a2b3;--line:#2a313b;--ok:#3ccf91;--bad:#ff6b57;--warn:#f5a524;--acc:#6ea8ff;--atk:rgba(245,158,11,.30);--tr:rgba(110,168,255,.14)}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card)}
+h1{font-size:17px;margin:0;font-weight:650}h1 small{color:var(--mut);font-weight:400;margin-left:8px}
+.pill{padding:4px 12px;border-radius:999px;font-weight:650;font-size:13px;border:1px solid var(--line)}
+.ok{color:var(--ok)}.bad{color:var(--bad);border-color:var(--bad)}.warn{color:var(--warn)}
+main{max-width:1180px;margin:0 auto;padding:16px;display:grid;gap:14px;grid-template-columns:repeat(12,1fr)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.k{grid-column:span 3}.w8{grid-column:span 8}.w4{grid-column:span 4}.w12{grid-column:span 12}
+@media(max-width:820px){.k{grid-column:span 6}.w8,.w4{grid-column:span 12}}
+.lab{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:.04em}.num{font-size:26px;font-weight:650;margin-top:2px}
+canvas{width:100%;height:170px;display:block}
+.ctl{display:flex;gap:10px;align-items:center;flex-wrap:wrap}select,button,input{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+button{cursor:pointer;background:var(--acc);color:#fff;border-color:var(--acc);font-weight:600}
+.bar{display:flex;align-items:center;gap:8px;margin:6px 0}.bar span{width:70px;color:var(--mut);font-size:12px}.bar i{display:block;height:10px;border-radius:5px;background:var(--acc)}
+#log{max-height:210px;overflow:auto;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}#log div{padding:4px 0;border-bottom:1px solid var(--line)}
+.tag{display:inline-block;padding:0 7px;border-radius:6px;border:1px solid var(--line);margin-right:4px;font-size:12px}
+.legend{color:var(--mut);font-size:12px;margin-top:6px}.legend b{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 10px;vertical-align:-1px}
+footer{max-width:1180px;margin:0 auto;padding:0 16px 24px;color:var(--mut);font-size:12px}
+</style></head><body>
+<header><h1>ICSGuard<small>budget-calibrated, regime-aware ICS attack detection</small></h1>
+<div class="ctl"><label>Speed <select id="speed"><option value="100">100 s/s</option><option value="400" selected>400 s/s</option><option value="1500">1500 s/s</option></select></label>
+<label>Budget <select id="budget"><option>2</option><option selected>5</option><option>10</option></select> runs/day</label>
+<button id="go">Start live replay</button><span id="state" class="pill ok">IDLE</span></div></header>
+<main>
+<div class="card k"><div class="lab">Samples processed</div><div class="num" id="kN">0</div></div>
+<div class="card k"><div class="lab">Attacks detected</div><div class="num" id="kD">0 / 0</div></div>
+<div class="card k"><div class="lab">False alarm runs</div><div class="num" id="kF">0</div></div>
+<div class="card k"><div class="lab">Operating regime</div><div class="num" id="kR">steady</div></div>
+<div class="card w8"><div class="lab">Anomaly evidence, &minus;log10(conformal p) &nbsp;(red line = alarm level)</div><canvas id="c1" width="900" height="170"></canvas>
+<div class="legend"><b style="background:var(--atk)"></b>labelled attack<b style="background:var(--tr)"></b>transient regime<b style="background:var(--bad)"></b>alarm</div></div>
+<div class="card w4"><div class="lab">Most suspicious tags (alarm attribution)</div><div id="tags"></div><div class="lab" style="margin-top:14px">Model</div><div id="model" class="legend"></div></div>
+<div class="card w8"><div class="lab">Stealth-drift CUSUM &nbsp;(red line = threshold h)</div><canvas id="c2" width="900" height="170"></canvas></div>
+<div class="card w4"><div class="lab">Alarm log</div><div id="log"></div></div>
+</main>
+<footer>Demo replays a simulated two-tank plant with labelled attacks (spoof, stealth ramp, flow tamper, actuator override, replay). Alarm runs/day is the operator budget; a run flagged <i>envelope</i> occurred while a command was outside the calibrated range.</footer>
+<script>
+const $=id=>document.getElementById(id);let es=null,S=null;
+const NP=1600;function reset(){S={n:0,nlp:[],st:[],y:[],a:[],r:[],cnt:0,runStart:null,runY:false,runCusum:false,det:0,fa:0,ev:[],evHit:new Set(),alpha:0.01,h:null,W:0}}
+reset();
+fetch('/api/model').then(r=>r.json()).then(m=>{$('model').innerHTML=`${m.tags.length} tags &middot; commands: ${m.command_cols.join(', ')||'none'}<br>regime window W = ${m.regime_window_s}s &middot; CUSUM tags: ${m.cusum_tags.join(', ')||'none'}<br>alpha = ${m.alpha.toFixed(5)}`});
+function draw(c,series,thr,mask,opts){const ctx=c.getContext('2d'),W=c.width,H=c.height,css=getComputedStyle(document.documentElement);ctx.clearRect(0,0,W,H);
+ const n=series.length;if(!n)return;const x=i=>i/(NP-1)*W;let mx=Math.max(opts.min||1,thr||0,...series)*1.1;const yv=v=>H-4-(v/mx)*(H-12);
+ mask.forEach(m=>{ctx.fillStyle=m.col;let s=-1;for(let i=0;i<=n;i++){const on=i<n&&m.f(i);if(on&&s<0)s=i;if(!on&&s>=0){ctx.fillRect(x(s),0,Math.max(1,x(i)-x(s)),H);s=-1}}});
+ ctx.strokeStyle=css.getPropertyValue('--line');ctx.beginPath();ctx.moveTo(0,H-3);ctx.lineTo(W,H-3);ctx.stroke();
+ if(thr){ctx.strokeStyle=css.getPropertyValue('--bad');ctx.setLineDash([6,4]);ctx.beginPath();ctx.moveTo(0,yv(thr));ctx.lineTo(W,yv(thr));ctx.stroke();ctx.setLineDash([])}
+ ctx.strokeStyle=css.getPropertyValue('--acc');ctx.lineWidth=1.3;ctx.beginPath();series.forEach((v,i)=>{i?ctx.lineTo(x(i),yv(v)):ctx.moveTo(x(i),yv(v))});ctx.stroke();ctx.lineWidth=1;
+ ctx.fillStyle=css.getPropertyValue('--bad');for(let i=0;i<n;i++)if(S.a[i])ctx.fillRect(x(i),0,Math.max(1,W/NP),4)}
+function render(){const c1=$('c1'),c2=$('c2');
+ draw(c1,S.nlp,-Math.log10(S.alpha),[{col:'rgba(245,158,11,.28)',f:i=>S.y[i]},{col:'rgba(37,99,235,.10)',f:i=>S.r[i]}],{min:3});
+ draw(c2,S.st,S.h,[{col:'rgba(245,158,11,.28)',f:i=>S.y[i]}],{min:10});
+ $('kN').textContent=S.n.toLocaleString();$('kD').textContent=`${S.evHit.size} / ${S.ev.length}`;$('kF').textContent=S.fa;
+ const last=S.n?S.r[S.r.length-1]:0;$('kR').textContent=last?'transient':'steady';}
+function onRow(o){S.n++;const nlp=Math.min(-Math.log10(Math.max(o.p,1e-6)),6);const push=(k,v)=>{S[k].push(v);if(S[k].length>NP)S[k].shift()};
+ push('nlp',o.v?nlp:0);push('st',o.st);push('y',o.y||0);push('a',o.a);push('r',o.r);
+ if(o.a){if(S.runStart===null){S.runStart=o.t;S.runY=false;S.runCusum=false}S.runY=S.runY||!!o.y;S.runCusum=S.runCusum||!!o.ca;S.runTop=o.top;S.runEnv=o.env;
+  S.ev.forEach((e,i)=>{if(o.t>=e.start&&o.t<e.end)S.evHit.add(i)});$('state').className='pill bad';$('state').textContent='ALARM'}
+ else{if(S.runStart!==null)closeRun(o.t);$('state').className='pill ok';$('state').textContent='NORMAL'}
+ if(o.a&&o.top&&o.top.length){$('tags').innerHTML=o.top.map(t=>`<div class="bar"><span>${t.tag}</span><i style="width:${Math.min(100,t.score*25)}%"></i></div>`).join('')}}
+function closeRun(t){const top=(S.runTop||[]).map(x=>x.tag).join(', ');const kind=S.runY?'<b class="ok">true attack</b>':'<b class="warn">false alarm</b>';if(!S.runY)S.fa++;
+ const d=document.createElement('div');d.innerHTML=`t=${S.runStart}&ndash;${t} (${t-S.runStart}s) ${kind} ${S.runCusum?'<span class="tag">drift</span>':''}${S.runEnv?'<span class="tag">envelope</span>':''}<br>tags: ${top}`;$('log').prepend(d);S.runStart=null}
+$('go').onclick=async()=>{if(es)es.close();reset();$('log').innerHTML='';$('tags').innerHTML='';
+ const info=await fetch('/api/demo/info').then(r=>r.json()).catch(()=>null);if(!info){alert('No demo stream loaded. Start the server with --stream.');return}S.ev=info.events;
+ es=new EventSource(`/api/demo/stream?speed=${$('speed').value}&budget=${$('budget').value}`);
+ es.addEventListener('meta',e=>{const m=JSON.parse(e.data);S.alpha=m.alpha;S.h=m.h;S.W=m.W});
+ es.onmessage=e=>{JSON.parse(e.data).forEach(onRow);render()};
+ es.addEventListener('done',()=>{es.close();$('state').className='pill ok';$('state').textContent='DONE'});es.onerror=()=>{};$('go').textContent='Restart replay'};
+render();
+</script></body></html>

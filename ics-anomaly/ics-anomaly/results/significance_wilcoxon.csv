@@ -1,0 +1,11 @@
+a,b,metric,p,mean_diff
+hybrid_mlp_inv,mlp_ae,event_f1,0.5703125,-0.017833453556629502
+hybrid_mlp_inv,mlp_ae,recall@2FA/day,1.0,0.016666666666666666
+hybrid_mlp_inv,invariant,event_f1,0.001953125,0.0830900666551356
+hybrid_mlp_inv,invariant,recall@2FA/day,0.0234375,-0.09166666666666667
+hybrid_ar_inv,ar,event_f1,0.02734375,-0.11734976995385527
+hybrid_ar_inv,ar,recall@2FA/day,0.5,-0.025000000000000005
+hybrid_ar_inv,invariant,event_f1,0.001953125,0.32099893692312687
+hybrid_ar_inv,invariant,recall@2FA/day,0.40625,0.03333333333333333
+hybrid_mlp_inv,hybrid_mlp_ar,event_f1,0.001953125,-0.26221764807890746
+hybrid_mlp_inv,hybrid_mlp_ar,recall@2FA/day,0.125,-0.06666666666666667

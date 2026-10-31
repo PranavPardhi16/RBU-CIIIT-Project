@@ -1,0 +1,10 @@
+numpy
+pandas
+scikit-learn
+scipy
+matplotlib
+fastapi
+uvicorn
+pydantic
+httpx          # tests only
+# torch        # optional: only for src/deep.py (LSTM autoencoder, untested)

@@ -1,0 +1,33 @@
+{
+ "n": 150000,
+ "n_events": 12,
+ "seeds": 10,
+ "primary_fp": 0.001,
+ "fp_rates": [
+  0.01,
+  0.001,
+  0.0001
+ ],
+ "debounce": 5,
+ "budgets_fa_per_day": [
+  2,
+  5
+ ],
+ "mode_change_window_s": 900,
+ "models": [
+  "iforest",
+  "pca",
+  "ar",
+  "mlp_ae",
+  "invariant",
+  "invariant_nodiff",
+  "inv_gate600",
+  "inv_gate1500",
+  "hybrid_ar_inv",
+  "hybrid_ar_invgate1500",
+  "hybrid_mlp_inv",
+  "hybrid_mlp_invgate1500",
+  "hybrid_mlp_ar"
+ ],
+ "alarm_budget_per_day": 5
+}
